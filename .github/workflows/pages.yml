@@ -1,0 +1,46 @@
+name: Deploy web (GitHub Pages)
+
+# Menyajikan isi folder www/ lewat HTTPS gratis, untuk dipasang di iPhone via Safari > Tambah ke Layar Utama.
+# Alamat: https://ajiku-app.github.io/scan-wms/
+
+on:
+  push:
+    branches: [main]
+    paths: ["www/**", "package.json", "scripts/vendor-zxing.mjs", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Siapkan ZXing lokal (scanner iPhone)
+        run: |
+          npm install --no-audit --no-fund
+          npm run vendor
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

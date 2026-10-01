@@ -153,3 +153,4 @@ input,select,textarea{font-size:16px} /* cegah auto-zoom iOS saat fokus */
 #cam{height:176px;height:clamp(176px,26dvh,250px)}
 .tile{min-height:96px;min-height:clamp(96px,13.5dvh,118px)}
 #cam{cursor:pointer}
+.lst{padding-bottom:44px}
