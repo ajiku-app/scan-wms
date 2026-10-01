@@ -32,7 +32,7 @@ if(r.ok||(r.status>=400&&r.status<500&&r.status!==408&&r.status!==429)){
 if(!r.ok){var m="";try{m=(await r.json()).message||""}catch(e){}toast("WMS menolak: "+(m||r.status),1)}
 S.q.shift();save()}else break}}finally{busy=false;qb()}}
 function EMPTY(){return'<div class="mu em">'+(live()?"Tidak ada dokumen yang terbuka. Tekan Sync sekarang di Beranda untuk memuat ulang.":"Belum login.")+"</div>"}
-function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Terhubung: "+CFG.base+" · antrian kirim: "+(S.q||[]).length:"Belum terhubung ke WMS."}
+function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Database aktif · antrian kirim : "+(S.q||[]).length:"Belum terhubung ke WMS."}
 async function G(p){await ensure();var r=await fetch(U(p),{headers:H()});if(r.status===401){if(await refresh())return G(p);expire();throw new Error("Sesi berakhir")}if(!r.ok){var m="";try{m=(await r.json()).message}catch(e){}throw new Error(m||"HTTP "+r.status)}return r.json()}
 async function sync(){if(!live()||!authed())return;var sb=$("api-sync");sb.textContent="Menyinkronkan…";try{await flush();return await sync2()}finally{sb.textContent="Sync sekarang"}}
 async function sync2(){if((S.q||[]).length)return toast(S.q.length+" transaksi belum terkirim",1);
@@ -42,7 +42,7 @@ S.dos=a[1].map(function(d){return{no:d.no,tgl:d.date,cust:d.customer_name,tel:d.
 S.racks=a[3].map(function(x){return x.code});S.stock=a[2].map(function(x){return{sku:x.sku,batch:x.batch,ed:x.expiry,loc:x.rack,qty:x.qty}});
 save();render();toast("Sinkron dengan WMS")}catch(e){toast("Gagal sinkron: "+e.message,1)}}
 var AC;function beep(er){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();var o=AC.createOscillator(),g=AC.createGain();o.frequency.value=er?200:1100;o.connect(g);g.connect(AC.destination);g.gain.value=.15;o.start();o.stop(AC.currentTime+(er?.35:.12))}catch(x){}}
-function toast(m,t){var e=$("toast");e.textContent=m;e.style.background=t?"#B42318":"#14532D";e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(function(){e.style.display="none"},2600);try{navigator.vibrate&&navigator.vibrate(t?[80,40,80]:40)}catch(x){}beep(t);}
+function toast(m,t){var e=$("toast");e.textContent=m;e.style.background=t?"#B42318":"#14532D";e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(function(){e.style.display="none"},t&&String(m).length>40?7000:2600);try{navigator.vibrate&&navigator.vibrate(t?[80,40,80]:40)}catch(x){}beep(t);}
 function parse(t){var a=t.trim().split("|");return a.length>1&&a[0]&&a[1]?{sku:a[0].trim().toUpperCase(),batch:a[1].trim().toUpperCase()}:null}
 function isRack(t){return/^[A-Z]{1,2}-\d{1,3}-\d{1,3}$/i.test(t.trim())}
 function find(s,b,l){return S.stock.filter(function(x){return x.sku===s&&x.batch===b&&x.loc===l})[0]}
@@ -166,11 +166,11 @@ var all=S.stock.filter(function(x){return(x.sku+x.batch+x.loc).toLowerCase().ind
 $("st-t").innerHTML=st.length?st.map(function(x){var d=days(x.ed);return'<div class="cd"><div><div class="rk">'+esc(x.loc)+"</div><b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">ED '+esc(x.ed)+' · <span class="'+(d<90?"w2":"")+'">'+d+' hari</span></div></div><div class="qt">'+x.qty+"<small> ctn</small></div></div>"}).join("")+(all.length>300?'<div class="mu em">Menampilkan 300 dari '+all.length+" — persempit pencarian.</div>":""):'<div class="mu em">Stok tidak ditemukan.</div>';
 $("lg-t").innerHTML=S.log.length?S.log.slice(0,50).map(function(x){return'<div class="cd"><div><span class="bd'+(x.type==="GI"?" p":"")+'">'+esc(x.type)+"</span> <b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">'+esc(x.doc)+" · "+esc(x.loc)+" · "+esc(x.t)+'</div></div><div class="qt">'+x.qty+"</div></div>"}).join(""):'<div class="mu em">Belum ada riwayat.</div>';cs()}
 $("st-q").oninput=render;
-$("st-csv").onclick=function(){var c="SKU,Batch,ED,Rak,Ctn\n"+S.stock.map(function(x){return[x.sku,x.batch,x.ed,x.loc,x.qty].join(",")}).join("\n");var a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(c);a.download="stok-"+ymd()+".csv";try{a.click()}catch(e){}navigator.clipboard&&navigator.clipboard.writeText(c).then(function(){toast("CSV disalin")},function(){})};
 
 /* KAMERA — jalur native (Chrome/Android via BarcodeDetector) + jalur cadangan (Safari/iOS via ZXing) */
 var stream,camT,camId,last="",lastT=0,tor=false,face="environment",det,zreader;
 try{face=localStorage.getItem("camface")||"environment"}catch(e){}
+var IOSSA=(/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1))&&navigator.standalone===true,gestureOK=false,pendingCam=false;
 function hasNative(){return "BarcodeDetector" in window}
 function hasZXing(){return !!window.ZXing}
 document.addEventListener("click",function(e){var el=e.target.closest?e.target.closest("[data-go],[data-doc],[data-scan],[data-tab],[data-man],[data-re],[data-rk],[data-z],[data-b],[data-l],[data-use],[data-bk],[data-x],[data-sub],[data-pw],#acct"):null,m=$("menu");
@@ -194,9 +194,9 @@ if(h("sub")){shut();var fn=askFn;askFn=null;if(fn)fn()}
 if(h("pw")){var p=$("lg-p");p.type=p.type==="password"?"text":"password";el.textContent=p.type==="password"?"Lihat":"Sembunyi"}});
 function stopStream(){stream&&stream.getTracks().forEach(function(t){t.stop()});stream=null;tor=false}
 async function startCam(){stopStream();var v=$("vid"),g=function(f){return navigator.mediaDevices.getUserMedia({video:f})},sz={width:{ideal:1280},height:{ideal:720}};
-try{stream=await g({facingMode:{exact:face},width:sz.width,height:sz.height})}
-catch(e){try{stream=await g({facingMode:{ideal:face},width:sz.width,height:sz.height})}catch(e2){stream=await g(true)}}
-v.srcObject=stream;await v.play();var tr=stream.getVideoTracks()[0],st=tr.getSettings?tr.getSettings():{};
+try{stream=await g({facingMode:{ideal:face},width:sz.width,height:sz.height})}
+catch(e){if(e&&(e.name==="NotAllowedError"||e.name==="SecurityError"))throw e;stream=await g(true)}
+v.setAttribute("playsinline","");v.setAttribute("webkit-playsinline","");v.muted=true;v.srcObject=stream;await v.play();var tr=stream.getVideoTracks()[0],st=tr.getSettings?tr.getSettings():{};
 if(st.facingMode)face=st.facingMode==="user"?"user":"environment";
 v.style.transform=face==="user"?"scaleX(-1)":"none";$("cam-sl").textContent=face==="user"?"Depan":"Belakang";
 var cp=tr.getCapabilities?tr.getCapabilities():{};$("cam-t").hidden=face==="user"||(cp&&"torch" in cp?!cp.torch:false)}
@@ -205,6 +205,7 @@ var i=$(camId);i.value=val;i.dispatchEvent(new KeyboardEvent("keydown",{key:"Ent
 rs=false;cs()}
 async function openCam(id){camId=id;camOn=true;
 if(!hasNative()&&!hasZXing()){camOn=false;man=true;cs();return toast("Kamera scan tidak didukung browser ini. Pakai Ketik untuk input manual.",1)};
+if(IOSSA&&!gestureOK){pendingCam=true;$("cam-m").textContent="Ketuk area kamera untuk mengaktifkan";return}
 try{await startCam();var v=$("vid");$("cam-m").textContent=HINT[camId.slice(0,-5)];
 clearInterval(camT);camT=null;if(zreader){try{zreader.reset()}catch(e){}zreader=null}
 if(hasNative()){
@@ -213,10 +214,23 @@ camT=setInterval(async function(){try{var r=await det.detect(v);if(r.length)onDe
 }else{
 zreader=new ZXing.BrowserMultiFormatReader();
 zreader.decodeFromVideoElement(v,function(result){if(result)onDetected(result.getText())});
-}}catch(e){camOn=false;man=true;cs();toast("Kamera tidak bisa diakses. Izinkan akses kamera, atau pakai Ketik.",1)}}
-function closeCam(){clearInterval(camT);camT=null;if(zreader){try{zreader.reset()}catch(e){}zreader=null}stopStream();camOn=false}
+}}catch(e){camOn=false;man=true;gestureOK=false;cs();toast(camErr(e),1)}}
+function closeCam(){pendingCam=false;clearInterval(camT);camT=null;if(zreader){try{zreader.reset()}catch(e){}zreader=null}stopStream();camOn=false}
 $("cam-s").onclick=async function(){face=face==="user"?"environment":"user";try{localStorage.setItem("camface",face)}catch(e){}try{await startCam();if(zreader){zreader.reset();zreader=new ZXing.BrowserMultiFormatReader();zreader.decodeFromVideoElement($("vid"),function(result){if(result)onDetected(result.getText())})}}catch(e){toast("Kamera tidak tersedia",1)}};
 $("cam-t").onclick=function(){try{tor=!tor;stream.getVideoTracks()[0].applyConstraints({advanced:[{torch:tor}]});$("cam-t").classList.toggle("on",tor)}catch(e){toast("Senter tidak didukung di perangkat/browser ini",1)}};
+function camErr(e){var n=e&&e.name||"";
+if(n==="NotAllowedError"||n==="SecurityError")return IOSSA?"Kamera diblokir. iPhone: Pengaturan > Apps > Safari > Kamera > pilih Tanya/Izinkan. Lalu hapus app dari Layar Utama, tambahkan lagi, dan pilih Izinkan. Sementara itu pakai tombol Foto atau Ketik.":"Akses kamera ditolak. Izinkan kamera di pengaturan browser/app, atau pakai Foto/Ketik.";
+if(n==="NotFoundError"||n==="OverconstrainedError")return"Kamera tidak ditemukan di perangkat ini.";
+if(n==="NotReadableError")return"Kamera sedang dipakai app lain. Tutup app lain lalu coba lagi.";
+return"Kamera tidak bisa diakses ("+(n||"error")+"). Pakai Foto atau Ketik."}
+$("cam").addEventListener("click",function(e){if(pendingCam&&!(e.target.closest&&e.target.closest("button,input,label"))){pendingCam=false;gestureOK=true;openCam(camId||stab+"-scan")}});
+$("cam-p").onclick=function(){$("cam-f").click()};
+$("cam-f").onchange=async function(){var f=this.files&&this.files[0];this.value="";if(!f)return;
+if(!hasZXing())return toast("Pembaca barcode belum siap, coba lagi sebentar",1);
+if(!camId)camId=stab+"-scan";var u=URL.createObjectURL(f);
+try{var r=await new ZXing.BrowserMultiFormatReader().decodeFromImageUrl(u);onDetected(r.getText())}
+catch(e){toast("Barcode tidak terbaca di foto. Dekatkan, pastikan fokus, lalu ulangi.",1)}
+finally{URL.revokeObjectURL(u)}};
 /* ===== LOGIN & OTORISASI (Supabase Auth) ===== */
 var PERM={inbound:["in","mv"],picker:["out"],admin:["in","out","mv"],supervisor:["in","out","mv"]};
 var SES=null,IDLE=30*60*1000,lt=0;S.q=S.q||[];

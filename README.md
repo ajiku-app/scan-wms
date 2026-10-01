@@ -45,6 +45,10 @@ npm run android           # sync + buka Android Studio → Run / Build > Generat
 ```
 iOS (hanya di Mac dengan Xcode): `npm run setup:ios` lalu `npm run ios`.
 
+## iPhone tanpa Apple Developer (versi web / PWA, gratis)
+Workflow `Deploy web` menyajikan folder `www/` lewat GitHub Pages (HTTPS). Sekali saja: GitHub → Settings → Pages → *Build and deployment* → Source: **GitHub Actions**.
+Lalu buka `https://ajiku-app.github.io/scan-wms/` di **Safari** iPhone → tombol Bagikan → **Tambah ke Layar Utama**. (GitHub Pages butuh repo publik pada paket gratis.)
+
 ## iOS
 Workflow `Build iOS` hanya memastikan project **berhasil dikompilasi** (tanpa signing). IPA untuk iPhone/TestFlight/App Store
 wajib **Apple Developer Program** (US$99/tahun) dan signing — paling mudah lewat Xcode di Mac: *Product → Archive → Distribute*.
