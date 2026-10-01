@@ -1,0 +1,31 @@
+{
+  "name": "scan-wms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WMS FG Warehouse - aplikasi scan gudang (Supabase) dibungkus Capacitor untuk Android (APK/AAB) & iOS",
+  "scripts": {
+    "vendor": "node scripts/vendor-zxing.mjs",
+    "assets": "capacitor-assets generate --iconBackgroundColor \"#15803D\" --splashBackgroundColor \"#F4F7F4\"",
+    "setup:android": "npm run vendor && npx cap add android && node scripts/patch-android.mjs && npx capacitor-assets generate --android --iconBackgroundColor \"#15803D\" --splashBackgroundColor \"#F4F7F4\" && npx cap sync android",
+    "setup:ios": "npm run vendor && npx cap add ios && node scripts/patch-ios.mjs && npx capacitor-assets generate --ios --iconBackgroundColor \"#15803D\" --splashBackgroundColor \"#F4F7F4\" && npx cap sync ios",
+    "sync": "npm run vendor && npx cap sync",
+    "serve": "npx serve www -l 8080",
+    "android": "npm run sync && npx cap open android",
+    "ios": "npm run sync && npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@zxing/library": "0.20.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

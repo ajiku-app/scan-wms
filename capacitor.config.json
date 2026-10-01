@@ -1,0 +1,30 @@
+{
+  "appId": "app.ajiku.scanwms",
+  "appName": "WMS FG",
+  "webDir": "www",
+  "backgroundColor": "#F4F7F4",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F4F7F4",
+    "scrollEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#F4F7F4",
+      "showSpinner": false
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "LIGHT"
+    }
+  }
+}

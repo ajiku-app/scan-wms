@@ -1,0 +1,47 @@
+name: Build iOS (cek kompilasi, tanpa signing)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["www/**", "capacitor.config.json", "package.json", "scripts/**", ".github/workflows/ios.yml"]
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate iOS project (Capacitor)
+        run: |
+          if [ -d ios ]; then
+            npm run vendor && node scripts/patch-ios.mjs && npx cap sync ios
+          else
+            npm run setup:ios
+          fi
+
+      - name: Build (device SDK, tanpa code signing)
+        working-directory: ios/App
+        run: |
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Zip hasil .app
+        run: cd ios/App/build/Build/Products/Release-iphoneos && zip -qr "$GITHUB_WORKSPACE/App-unsigned.zip" App.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-app
+          path: App-unsigned.zip
