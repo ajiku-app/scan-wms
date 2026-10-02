@@ -1,4 +1,4 @@
-const C="fgscan-v17",A=["./","./index.html","./manifest.json","./icon-192.png","./icon-512.png","./icon-180.png","./style.css","./app.js","./config.js","./login-bg.jpg","./plus-jakarta-latin.woff2"];
+const C="fgscan-v18",A=["./","./index.html","./manifest.json","./icon-192.png","./icon-512.png","./icon-180.png","./style.css","./app.js","./config.js","./login-bg.jpg","./plus-jakarta-latin.woff2"];
 const CDN="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
 self.addEventListener("install",e=>{e.waitUntil(
   caches.open(C).then(c=>c.addAll(A)).then(()=>caches.open(C)).then(c=>fetch(CDN,{mode:"cors"}).then(r=>r.ok&&c.put(CDN,r)).catch(()=>{})).then(()=>caches.open(C)).then(c=>fetch("./vendor/zxing.min.js").then(r=>r.ok&&c.put("./vendor/zxing.min.js",r)).catch(()=>{})).then(()=>self.skipWaiting())

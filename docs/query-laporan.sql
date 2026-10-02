@@ -1,12 +1,8 @@
--- ####################################################################
--- ARSIP — JANGAN DIJALANKAN
--- File ini versi LAMA. Menjalankannya di database yang sudah memakai WMS v2
--- akan MENIMPA fungsi (wms_move, wms_pick, fefo_allocate, wms_outbound_complete,
--- wms_inbound_complete) sehingga hold, kapasitas, validasi ED/PL, dan log
--- aktivitas HILANG, dan (02_*) menghidupkan kembali wms_receive.
--- Sumber SQL satu-satunya: repo WMS -> backend/ (lihat backend/README.md).
--- ####################################################################
-
+-- ============================================================
+-- Query laporan (HANYA SELECT, aman dijalankan di Supabase SQL Editor kapan saja).
+-- Dipindahkan dari supabase-arsip/ (folder arsip dihapus karena SQL lamanya bisa menimpa fungsi WMS v2).
+-- Backend/skema resmi hanya ada di repo WMS -> backend/.
+-- ============================================================
 -- Query laporan (opsional, jalankan sesuai kebutuhan di SQL Editor)
 
 -- 2) Stok per SKU + total

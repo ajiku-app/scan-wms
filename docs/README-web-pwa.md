@@ -2,7 +2,7 @@
 
 ```
 frontend/   PWA bergaya aplikasi mobile iOS/Android (index.html, style.css, app.js, config.js, manifest.json, sw.js)
-supabase-arsip/   ARSIP SQL lama — jangan dijalankan; backend resmi ada di repo WMS (backend/)
+(SQL backend resmi hanya di repo WMS -> backend/; folder supabase-arsip sudah dihapus)
 ```
 
 Login pakai akun WMS utama (Supabase Auth + tabel `profiles`), bukan tabel users terpisah.

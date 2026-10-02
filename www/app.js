@@ -30,21 +30,23 @@ try{r=await fetch(U("/rest/v1/rpc/"+t[0]),{method:"POST",headers:H(),body:JSON.s
 if(r.status===401){if(!retried&&await refresh()){retried=true;continue}expire();break}
 retried=false;
 if(r.ok||(r.status>=400&&r.status<500&&r.status!==408&&r.status!==429)){
-if(!r.ok){var m="";try{m=(await r.json()).message||""}catch(e){}toast("WMS menolak: "+(m||r.status),1);rej=true}
+if(!r.ok){var m="";try{m=(await r.json()).message||""}catch(e){}if(/FREEZE/.test(m)){S.freeze=true;save();toast("Gudang di-FREEZE: "+S.q.length+" transaksi ditahan dan terkirim otomatis setelah Unfreeze.",1);break}toast("WMS menolak: "+(m||r.status),1);rej=true}else S.freeze=false;
 S.q.shift();save()}else break}}finally{busy=false;qb();if(rej&&!S.q.length&&authed())sync2(true)}}
 function EMPTY(){return'<div class="mu em">'+(live()?"Tidak ada dokumen yang terbuka. Tekan Sync sekarang di Beranda untuk memuat ulang.":"Belum login.")+"</div>"}
-function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+(RT.ok?" · live":"")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Database aktif · antrian kirim : "+(S.q||[]).length:"Belum terhubung ke WMS."}
+function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+(RT.ok?" · live":"")+(S.freeze?" · FREEZE":"")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Database aktif · antrian kirim : "+(S.q||[]).length:"Belum terhubung ke WMS."}
 async function G(p){await ensure();var r=await fetch(U(p),{headers:H()});if(r.status===401){if(await refresh())return G(p);expire();throw new Error("Sesi berakhir")}if(!r.ok){var m="";try{m=(await r.json()).message}catch(e){}throw new Error(m||"HTTP "+r.status)}return r.json()}
 async function GA(p){var out=[],o=0;for(;;){var b=await G(p+"&limit=1000&offset="+o);if(!b.length)break;out=out.concat(b);o+=b.length;if(o>500000)break}return out}
 async function sync(){if(!live()||!authed())return;var sb=$("api-sync");sb.textContent="Menyinkronkan…";try{await flush();return await sync2()}finally{sb.textContent="Sync sekarang"}}
 async function sync2(q){if((S.q||[]).length)return toast(S.q.length+" transaksi belum terkirim",1);
-try{var a=await Promise.all([can("in")?G("/rest/v1/inbound_docs?status=eq.open&order=doc_date,no&select=no,packing_list,supplier,date:doc_date,inbound_lines(sku,batch,expiry,qty_pl,qty_received,rack:rack_code,products(name),profiles(name))"):[],can("out")?G("/rest/v1/outbound_docs?status=eq.open&order=doc_date,no&select=no,date:doc_date,customer_name,customer_phone,customer_address,outbound_picks(seq,sku,batch,expiry,rack:rack_code,qty,picked)"):[],GA("/rest/v1/stock?qty=gt.0&order=sku,expiry,id&select=sku,batch,expiry,rack:rack_code,qty"),GA("/rest/v1/racks?active=eq.true&order=code&select=code"),G("/rest/v1/stock_holds?status=eq.active&select=sku,batch,rack_code,qty&limit=1000").catch(function(){return[]})]);
+try{var a=await Promise.all([can("in")?G("/rest/v1/inbound_docs?status=eq.open&order=doc_date,no&select=no,packing_list,supplier,date:doc_date,inbound_lines(sku,batch,expiry,qty_pl,qty_received,rack:rack_code,products(name),profiles(name))"):[],can("out")?G("/rest/v1/outbound_docs?status=eq.open&order=doc_date,no&select=no,date:doc_date,customer_name,customer_phone,customer_address,outbound_picks(seq,sku,batch,expiry,rack:rack_code,qty,picked)"):[],GA("/rest/v1/stock?qty=gt.0&order=sku,expiry,id&select=sku,batch,expiry,rack:rack_code,qty"),GA("/rest/v1/racks?active=eq.true&order=code&select=code,capacity"),G("/rest/v1/stock_holds?status=eq.active&select=sku,batch,rack_code,qty&limit=1000").catch(function(){return[]}),G("/rest/v1/wms_freeze?id=eq.1&select=active,note").catch(function(){return[]})]);
 S.ins=a[0].map(function(d){return{no:d.no,pl:d.packing_list,sup:d.supplier,tgl:d.date,done:0,lines:(d.inbound_lines||[]).map(function(l){if(l.products&&l.products.name)PROD[l.sku]=l.products.name;return{sku:l.sku,batch:l.batch,ed:l.expiry,pl:l.qty_pl,rcv:l.qty_received||0,rak:l.rack||"",pic:l.profiles?l.profiles.name:""}})}});
 S.dos=a[1].map(function(d){return{no:d.no,tgl:d.date,cust:d.customer_name,tel:d.customer_phone,addr:d.customer_address,done:0,picks:(d.outbound_picks||[]).sort(function(x,y){return x.seq-y.seq}).map(function(p){return{sku:p.sku,batch:p.batch,ed:p.expiry,loc:p.rack,qty:p.qty,got:p.picked||0}})}});
-S.racks=a[3].map(function(x){return x.code});S.holds=(a[4]||[]).map(function(h){return{sku:h.sku,batch:h.batch,loc:h.rack_code,qty:h.qty}});S.stock=a[2].map(function(x){return{sku:x.sku,batch:x.batch,ed:x.expiry,loc:x.rack,qty:x.qty}});
+S.racks=a[3].map(function(x){return x.code});S.cap={};a[3].forEach(function(x){S.cap[x.code]=x.capacity||0});S.freeze=!!(a[5]&&a[5][0]&&a[5][0].active);S.fnote=(a[5]&&a[5][0]&&a[5][0].note)||"";S.holds=(a[4]||[]).map(function(h){return{sku:h.sku,batch:h.batch,loc:h.rack_code,qty:h.qty}});S.stock=a[2].map(function(x){return{sku:x.sku,batch:x.batch,ed:x.expiry,loc:x.rack,qty:x.qty}});
 save();render();if(!q)toast("Sinkron dengan WMS")}catch(e){toast("Gagal sinkron: "+e.message,1)}}
 var AC;function beep(er){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();var o=AC.createOscillator(),g=AC.createGain();o.frequency.value=er?200:1100;o.connect(g);g.connect(AC.destination);g.gain.value=.15;o.start();o.stop(AC.currentTime+(er?.35:.12))}catch(x){}}
 function toast(m,t){var e=$("toast");e.textContent=m;e.style.background=t?"#B42318":"#14532D";e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(function(){e.style.display="none"},t&&String(m).length>40?Math.min(14000,Math.max(7000,String(m).length*70)):2600);try{navigator.vibrate&&navigator.vibrate(t?[80,40,80]:40)}catch(x){}beep(t);}
+function fzx(){if(S.freeze){toast("Gudang di-FREEZE (stok opname)"+(S.fnote?": "+S.fnote:"")+". Transaksi ditutup sampai di-unfreeze.",1);return true}return false}
+function fzb(){var e=$("fz-b");if(!e){e=document.createElement("div");e.id="fz-b";e.className="warn";e.style.cssText="margin:8px 12px";var h=$("h-docs");if(h&&h.parentNode)h.parentNode.insertBefore(e,h);else return}e.hidden=!S.freeze;e.textContent="GUDANG DI-FREEZE untuk stok opname. Terima, ambil, dan pindah barang ditolak sampai di-unfreeze."+(S.fnote?" ("+S.fnote+")":"")}
 function knownB(b){return S.stock.some(function(x){return x.batch===b})||S.ins.some(function(d){return d.lines.some(function(l){return l.batch===b})})||S.dos.some(function(d){return d.picks.some(function(p){return p.batch===b})})}
 function parse(t){var a=t.trim().split("|");if(!(a.length>1&&a[0]&&a[1]))return null;var b=a[1].trim().toUpperCase();if(!knownB(b)){var m=/^.+\.(\d{8}\.\d{3})$/.exec(b);if(m)b=m[1]}return{sku:a[0].trim().toUpperCase(),batch:b}}
 function isRack(t){t=t.trim().toUpperCase();return/^[A-Z]{1,3}-\d{1,3}-\d{1,3}$/.test(t)||t===STG||t==="NON-RACK"}
@@ -82,8 +84,11 @@ function sheet(h){$("sh-body").innerHTML=h;$("sh").hidden=false}
 function shut(){$("sh").hidden=true}
 function ask(t,rows,fn){askFn=fn;sheet('<div><div class="sh-t">'+t+'</div><div class="mu">Periksa kembali data berikut sebelum disimpan.</div></div><div>'+rows.map(function(r){return'<div class="rw"><span>'+r[0]+"</span><b>"+esc(r[1])+"</b></div>"}).join("")+'</div><div class="warn">Data dikirim ke WMS. Jika sedang offline, data tersimpan dan dikirim otomatis saat sinyal kembali.</div><button class="b" data-sub="1">Submit</button><button class="b g" data-x="1">Periksa lagi</button>')}
 var ST3={full:["Penuh","#D62839","#fff","#D62839"],part:["Tersisa","#FBB92E","#14201A","#FBB92E"],empty:["Kosong","#E3E8E4","#14201A","#B7C6BC"]};
-function occ(c){return S.stock.some(function(x){return x.loc===c})}
-function sk(a){var o=a.map(occ);return o.every(Boolean)?"full":o.some(Boolean)?"part":"empty"}
+function cap(c){return(S.cap||{})[c]||0}
+function npl(c){var k={};S.stock.forEach(function(x){if(x.loc===c&&x.qty>0)k[x.sku+"|"+x.batch]=1});return Object.keys(k).length}
+function cst(c){var n=npl(c),m=cap(c);return n===0?"empty":(m>0&&n>=m)?"full":"part"}
+function occ(c){return cst(c)==="full"}
+function sk(a){var o=a.map(cst);return o.every(function(x){return x==="full"})?"full":o.every(function(x){return x==="empty"})?"empty":"part"}
 function p2(n){return n<10?"0"+n:""+n}
 function rkT(){var z={};(S.racks||[]).forEach(function(c){var m=/^([A-Z]{1,3})-(\d{1,3})-(\d{1,3})$/i.exec(c);if(!m)return;var a=m[1].toUpperCase(),b=+m[2];z[a]=z[a]||{};z[a][b]=z[a][b]||{};z[a][b][+m[3]]=c});return z}
 function bl(Z,b){return Object.keys(Z[b]).map(function(l){return Z[b][l]})}
@@ -98,7 +103,7 @@ if(!rk.z){var n={full:0,part:0,empty:0};h=zs.map(function(a){var k=sk(zc(a));n[k
 return sheet('<div class="sh-h"><div><div class="sh-t">Pilih rak tujuan</div><div class="mu">'+n.full+" penuh · "+n.part+" masih tersisa · "+n.empty+' kosong</div></div>'+xb()+'</div><div class="gr4">'+h+"</div>"+lgd()+'<div class="mu" style="text-align:center">Ketuk rak yang tersedia untuk memilih bin loc dan level.</div>')}
 var Z=T[rk.z],bs=Object.keys(Z).map(Number).sort(function(a,b){return a-b}),lh;
 var bh=bs.map(function(b){return rkb('data-b="'+b+'" aria-label="Bin loc '+p2(b)+'"',sk(bl(Z,b)),p2(b),0,rk.b===b)}).join("");
-if(rk.b){var ls=Object.keys(Z[rk.b]).map(Number).sort(function(a,b){return a-b});lh='<div class="gr4" style="grid-template-columns:repeat('+Math.min(ls.length,6)+',minmax(0,1fr))">'+ls.map(function(l){return rkb('data-l="'+l+'"',occ(Z[rk.b][l])?"full":"empty",l,1,rk.l===l)}).join("")+"</div>"}else lh='<div class="empty" style="min-height:56px;flex:none;border-radius:14px;background:var(--bg)">Pilih bin loc dulu</div>';
+if(rk.b){var ls=Object.keys(Z[rk.b]).map(Number).sort(function(a,b){return a-b});lh='<div class="gr4" style="grid-template-columns:repeat('+Math.min(ls.length,6)+',minmax(0,1fr))">'+ls.map(function(l){return rkb('data-l="'+l+'"',cst(Z[rk.b][l]),l,1,rk.l===l)}).join("")+"</div>"}else lh='<div class="empty" style="min-height:56px;flex:none;border-radius:14px;background:var(--bg)">Pilih bin loc dulu</div>';
 var cd=rk.b&&rk.l?Z[rk.b][rk.l]:"";
 sheet('<div class="sh-h"><button class="ib" data-bk="1" aria-label="Kembali"><svg class="ic"><use href="#i-back"/></svg></button><div style="flex:1;margin-left:6px"><div class="sh-t">Rak '+rk.z+'</div><div class="mu">'+bs.length+" bin loc</div></div>"+xb()+'</div><b>Bin loc</b><div class="gr6">'+bh+"</div><b>Level</b>"+lh+lgd()+'<button class="b'+(cd?"":" g")+'" data-use="1">'+(cd?"Pakai "+cd.toUpperCase():"Pilih bin loc dan level")+"</button>")}
 
@@ -110,19 +115,19 @@ $("in-h").innerHTML=badge(d.done)+kv([["Warehouse","Gudang FG"],["Packing List",
 $("in-t").innerHTML=d.lines.length?d.lines.map(function(l){var c=cin&&cin.sku===l.sku&&cin.batch===l.batch?" cur":l.rcv>=l.pl?" dn":"";return'<div class="cd'+c+'"><div><b>'+esc(l.sku)+'</b> · '+esc(l.batch)+'<div class="mu">ED '+esc(l.ed)+' · Rak '+esc(l.rak||"—")+'</div></div><div class="qt">'+l.rcv+'<small>/'+l.pl+'</small></div></div>'}).join(""):'<div class="mu">Belum ada item. Scan label untuk menambah.</div>'}
 $("in-sel").onchange=function(){cin=null;$("in-f").hidden=true;render()};
 bind("in-scan",function(v){var d=din();if(!d||d.done)return toast("Pilih dokumen yang masih proses","e");
-if(isRack(v)){$("in-rak").value=v.toUpperCase();return toast("Rak "+v.toUpperCase())}
+if(isRack(v))return toast("Inbound selalu masuk GR-STAGING. Scan rak dipakai saat Putaway (menu Pindah).","e");
 var p=parse(v);if(!p)return toast("Format harus SKU|Batch","e");
 var l=d.lines.filter(function(x){return x.sku===p.sku&&x.batch===p.batch})[0];
 if(!l)return toast("SKU|Batch ini tidak ada di Packing List dokumen ini","e");
 cin=p;$("in-f").hidden=false;$("in-i").textContent=p.sku+" · "+p.batch;
 $("in-n").textContent=(PROD[p.sku]||l.sku)+" — ED "+l.ed+" · PL "+l.pl+" · sudah diterima "+l.rcv;
-$("in-q").value=Math.max(1,l.pl-l.rcv);$("in-rak").value=l.rak||"";render();$("in-q").focus()});
+$("in-q").value=Math.max(1,l.pl-l.rcv);$("in-rak").value="";render();$("in-q").focus()});
 function doIn(){var d=din(),q=+$("in-q").value,rk=$("in-rak").value.trim().toUpperCase();
 if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");if(rk&&!isRack(rk))return toast("Kode rak tidak valid","e");
 var l=d.lines.filter(function(x){return x.sku===cin.sku&&x.batch===cin.batch})[0];if(!l)return toast("Baris tidak ditemukan di Packing List","e");
 if(l.rcv+q>l.pl)return toast("Melebihi Jumlah PL (sisa "+Math.max(0,l.pl-l.rcv)+" ctn)","e");
-var loc=rk||l.rak||STG;l.rcv+=q;l.rak=loc;l.pic=S.pic;add(cin.sku,cin.batch,l.ed,loc,q);lg("GR",d.no,cin.sku,cin.batch,loc,q);
-Q("POST","/inbound/"+encodeURIComponent(d.no)+"/receive",{sku:cin.sku,batch:cin.batch,qty:q,rack:rk||null,scanned_at:new Date().toISOString()});save();
+var loc=STG;l.rcv+=q;l.rak=loc;l.pic=S.pic;add(cin.sku,cin.batch,l.ed,loc,q);lg("GR",d.no,cin.sku,cin.batch,loc,q);
+Q("POST","/inbound/"+encodeURIComponent(d.no)+"/receive",{sku:cin.sku,batch:cin.batch,qty:q,rack:null,scanned_at:new Date().toISOString()});save();
 toast("Diterima "+q+" ctn → "+loc);cin=null;$("in-f").hidden=true;render();$("in-scan").focus()};
 $("in-done").onclick=function(){var d=din();if(!d)return;if(d.lines.some(function(l){return l.rcv<l.pl})&&!confirm("Ada item belum lengkap. Tetap selesaikan?"))return;d.done=1;Q("POST","/inbound/"+encodeURIComponent(d.no)+"/complete",{pic:S.pic});save();render()};
 
@@ -154,19 +159,19 @@ pend=null;$("out-f").hidden=true;save();render();$("out-scan").focus()};
 var mc=null;
 bind("mv-scan",function(v){if(isRack(v)){$("mv-dst").value=v.toUpperCase();return toast("Ke rak "+v.toUpperCase())}
 var p=parse(v);if(!p)return toast("Format harus SKU|Batch","e");var rows=S.stock.filter(function(x){return x.sku===p.sku&&x.batch===p.batch});
-if(!rows.length)return toast("Stok tidak ditemukan","e");rows=rows.filter(function(r){return freeQ(r.sku,r.batch,r.loc)>0});if(!rows.length)return toast("Seluruh stok item ini sedang di-hold","e");mc=p;$("mv-f").hidden=false;$("mv-i").textContent=p.sku+" · "+p.batch;
-$("mv-src").innerHTML=rows.map(function(r){return'<option value="'+esc(r.loc)+'">'+esc(r.loc)+" — "+freeQ(r.sku,r.batch,r.loc)+" ctn"+(held(r.sku,r.batch,r.loc)?" (+"+held(r.sku,r.batch,r.loc)+" hold)":"")+"</option>"}).join("");$("mv-q").value=freeQ(rows[0].sku,rows[0].batch,rows[0].loc);$("mv-src").onchange=function(){$("mv-q").value=freeQ(mc.sku,mc.batch,this.value)}});
+if(!rows.length)return toast("Stok tidak ditemukan","e");rows=rows.filter(function(r){return r.qty>0&&held(r.sku,r.batch,r.loc)===0});if(!rows.length)return toast("Pallet ini sedang di-hold, tidak bisa dipindah","e");mc=p;$("mv-f").hidden=false;$("mv-i").textContent=p.sku+" · "+p.batch;
+$("mv-src").innerHTML=rows.map(function(r){return'<option value="'+esc(r.loc)+'">'+esc(r.loc)+" — "+freeQ(r.sku,r.batch,r.loc)+" ctn"+(held(r.sku,r.batch,r.loc)?" (+"+held(r.sku,r.batch,r.loc)+" hold)":"")+"</option>"}).join("");$("mv-q").value=rows[0].qty;$("mv-src").onchange=function(){$("mv-q").value=freeQ(mc.sku,mc.batch,this.value)}});
 function doMv(){if(!mc)return;var s=$("mv-src").value,dst=$("mv-dst").value.trim().toUpperCase(),q=+$("mv-q").value,r=find(mc.sku,mc.batch,s);
-if(!isRack(dst))return toast("Scan / isi rak tujuan","e");if(dst===s)return toast("Rak sama","e");if(dst===STG)return toast("Tujuan putaway tidak boleh GR-STAGING","e");var fq=freeQ(mc.sku,mc.batch,s);if(!(q>0)||q>fq)return toast("Jumlah maks "+fq+" ctn (stok yang di-hold tidak bisa dipindah)","e");
+if(!isRack(dst))return toast("Scan / isi rak tujuan","e");if(dst===s)return toast("Rak sama","e");if(dst===STG)return toast("Tujuan putaway tidak boleh GR-STAGING","e");if(held(mc.sku,mc.batch,s)>0)return toast("Pallet di-hold, tidak bisa dipindah","e");if(!r||q!==r.qty)return toast("Pindah per pallet: seluruh isi "+(r?r.qty:0)+" ctn","e");if(cap(dst)>0&&!find(mc.sku,mc.batch,dst)&&npl(dst)>=cap(dst))return toast("Rak "+dst+" penuh ("+npl(dst)+" dari "+cap(dst)+" pallet)","e");
 add(mc.sku,mc.batch,r.ed,dst,q);sub(mc.sku,mc.batch,s,q);lg("PINDAH","-",mc.sku,mc.batch,s+" → "+dst,q);
 Q("POST","/stock/move",{sku:mc.sku,batch:mc.batch,from_rack:s,to_rack:dst,qty:q,pic:S.pic,scanned_at:new Date().toISOString()});save();toast(q+" ctn → "+dst);
 mc=null;$("mv-f").hidden=true;$("mv-i").textContent="";$("mv-dst").value="";render();$("mv-scan").focus()};
 
-$("in-ok").onclick=function(){var d=din(),q=+$("in-q").value;if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");var l0=d.lines.filter(function(x){return x.sku===cin.sku&&x.batch===cin.batch})[0];if(l0&&l0.rcv+q>l0.pl)return toast("Melebihi Jumlah PL (sisa "+Math.max(0,l0.pl-l0.rcv)+" ctn)","e");ask("Konfirmasi penerimaan barang",[["Dokumen",d.no],["Barang",cin.sku+" · "+cin.batch],["Jumlah",q+" ctn"],["Rak tujuan",$("in-rak").value.trim().toUpperCase()||"GR-STAGING (staging)"]],doIn)};
-$("out-ok").onclick=function(){var d=dout();if(!d||!pend)return;ask("Konfirmasi pengambilan barang",[["Dokumen",d.no],["Barang",pend.sku+" · "+pend.batch],["Jumlah",$("out-q").value+" ctn"],["Diambil dari rak",pend.loc]],doOut)};
-$("mv-ok").onclick=function(){if(!mc)return;var dst=$("mv-dst").value.trim().toUpperCase();if(!isRack(dst))return toast("Pilih atau scan rak tujuan","e");ask("Konfirmasi putaway",[["Barang",mc.sku+" · "+mc.batch],["Jumlah",$("mv-q").value+" ctn"],["Dari",$("mv-src").value],["Ke rak",dst]],doMv)};
+$("in-ok").onclick=function(){if(fzx())return;var d=din(),q=+$("in-q").value;if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");var l0=d.lines.filter(function(x){return x.sku===cin.sku&&x.batch===cin.batch})[0];if(l0&&l0.rcv+q>l0.pl)return toast("Melebihi Jumlah PL (sisa "+Math.max(0,l0.pl-l0.rcv)+" ctn)","e");ask("Konfirmasi penerimaan barang",[["Dokumen",d.no],["Barang",cin.sku+" · "+cin.batch],["Jumlah",q+" ctn"],["Rak tujuan","GR-STAGING (staging)"]],doIn)};
+$("out-ok").onclick=function(){if(fzx())return;var d=dout();if(!d||!pend)return;ask("Konfirmasi pengambilan barang",[["Dokumen",d.no],["Barang",pend.sku+" · "+pend.batch],["Jumlah",$("out-q").value+" ctn"],["Diambil dari rak",pend.loc]],doOut)};
+$("mv-ok").onclick=function(){if(fzx())return;if(!mc)return;var dst=$("mv-dst").value.trim().toUpperCase();if(!isRack(dst))return toast("Pilih atau scan rak tujuan","e");ask("Konfirmasi putaway",[["Barang",mc.sku+" · "+mc.batch],["Jumlah",$("mv-q").value+" ctn"],["Dari",$("mv-src").value],["Ke rak",dst]],doMv)};
 /* STOK + render */
-function render(){rIn();rOut();rHome();pg();var q=$("st-q").value.toLowerCase();
+function render(){rIn();rOut();rHome();fzb();pg();var q=$("st-q").value.toLowerCase();
 var all=S.stock.filter(function(x){return(x.sku+x.batch+x.loc).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return a.sku+a.ed<b.sku+b.ed?-1:1}),st=all.slice(0,300);
 $("st-t").innerHTML=st.length?st.map(function(x){var d=days(x.ed);return'<div class="cd"><div><div class="rk">'+esc(x.loc)+"</div><b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">ED '+esc(x.ed)+' · <span class="'+(d<90?"w2":"")+'">'+d+' hari</span></div></div><div class="qt">'+x.qty+"<small> ctn"+(held(x.sku,x.batch,x.loc)?" · hold "+held(x.sku,x.batch,x.loc):"")+"</small></div></div>"}).join("")+(all.length>300?'<div class="mu em">Menampilkan 300 dari '+all.length+" — persempit pencarian.</div>":""):'<div class="mu em">Stok tidak ditemukan.</div>';
 $("lg-t").innerHTML=S.log.length?S.log.slice(0,50).map(function(x){return'<div class="cd"><div><span class="bd'+(x.type==="GI"?" p":"")+'">'+esc(x.type)+"</span> <b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">'+esc(x.doc)+" · "+esc(x.loc)+" · "+esc(x.t)+'</div></div><div class="qt">'+x.qty+"</div></div>"}).join(""):'<div class="mu em">Belum ada riwayat.</div>';cs()}
@@ -271,7 +276,7 @@ setInterval(function(){if(SES&&!authed())expire()},30000);
 setInterval(function(){if(authed()&&navigator.onLine&&!document.hidden&&cur==="home"&&!busy&&!(S.q||[]).length&&$("sh").hidden)sync2(true)},90000);
 /* ===== Realtime: perubahan di WMS langsung masuk (Supabase Realtime via WebSocket, tanpa library) =====
    Hak baca mengikuti RLS login. Polling 90 dtk tetap jadi cadangan bila koneksi live putus. */
-var RTT=["inbound_docs","inbound_lines","outbound_docs","outbound_picks","stock","stock_holds","racks"],RTP="realtime:wms-scan";
+var RTT=["inbound_docs","inbound_lines","outbound_docs","outbound_picks","stock","stock_holds","racks","wms_freeze"],RTP="realtime:wms-scan";
 function rtBeat(){var w=RT.ws;if(!w||w.readyState!==1)return;
 ensure().then(function(){if(RT.ws!==w||w.readyState!==1)return;
 if(SES&&SES.token&&SES.token!==RT.tok){RT.tok=SES.token;w.send(JSON.stringify({topic:RTP,event:"access_token",payload:{access_token:RT.tok},ref:String(++RT.ref),join_ref:"1"}))}
@@ -299,6 +304,7 @@ else if(m.topic===RTP&&(m.event==="phx_close"||m.event==="phx_error"))try{ws.clo
 ws.onclose=function(){if(RT.ws!==ws)return;RT.ws=null;RT.ok=false;clearInterval(RT.hb);qb();if(RT.want&&authed())rtLater()};
 ws.onerror=function(){try{ws.close()}catch(x){}}}
 function rtStop(){RT.want=false;RT.pend=false;clearTimeout(RT.rt);clearTimeout(RT.tm);clearInterval(RT.hb);var w=RT.ws;RT.ws=null;RT.ok=false;if(w)try{w.close()}catch(e){}try{qb()}catch(e){}}
+setInterval(function(){if(authed()&&navigator.onLine&&!busy&&(S.q||[]).length)flush()},30000);
 $("api-sync").onclick=sync;window.addEventListener("online",function(){flush();qb()});window.addEventListener("offline",qb);
 render();qb();
 if(authed())applyRole();else if(SES)showLogin("Sesi berakhir. Silakan login kembali.");else $("welcome").style.display="flex";

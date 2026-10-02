@@ -4,7 +4,7 @@ Aplikasi scan gudang berbasis Supabase, dibungkus **Capacitor** menjadi aplikasi
 
 ```
 www/        Aplikasi web (HTML/JS/CSS) — sumber tunggal untuk Android & iOS
-supabase-arsip/   ARSIP SQL lama — JANGAN dijalankan. Backend resmi ada di repo WMS (backend/)
+docs/query-laporan.sql   Query laporan (hanya SELECT). SQL backend resmi HANYA di repo WMS (backend/)
 assets/     Ikon & splash sumber (dibuat otomatis jadi semua ukuran Android/iOS)
 scripts/    Patch otomatis (izin kamera, versi, signing)
 .github/    Workflow build Android (APK+AAB) & iOS
@@ -84,6 +84,14 @@ bash rilis.sh 1.0.2 "pesan commit"    # + tag v1.0.2 -> APK/AAB dilampirkan ke G
 `ci.yml` memeriksa sintaks JS dan kecocokan tag dengan `package.json`.
 Catatan: versi web/PWA ter-update otomatis; aplikasi Android (APK) membawa isi `www/` di dalamnya,
 jadi HP perlu memasang APK baru dari Releases untuk mendapat perubahan.
+
+## Perubahan v1.0.4 (sinkronisasi dengan WMS v2.0.17)
+- Inbound selalu masuk **GR-STAGING** (input rak di Terima barang dihapus); penempatan ke rak lewat Pindah/Putaway.
+- Pindah/putaway **per pallet utuh**; pallet yang di-hold tidak bisa dipindah. Pemilih rak memakai **kapasitas pallet per bin** (Penuh = jumlah pallet mencapai kapasitas).
+- **FREEZE opname**: spanduk di Beranda, tombol terima/ambil/pindah ditolak; transaksi yang sudah antri **ditahan** (tidak dibuang) dan terkirim otomatis setelah Unfreeze.
+- Antrian kirim dicoba ulang tiap 30 detik saat online.
+
+> **Wajib:** jalankan `migrate_v2_0_17_pallet_freeze_staging.sql` (repo WMS) sebelum memakai versi ini; pasang APK baru di semua HP.
 
 ## Realtime (v1.0.3)
 Perubahan dari WMS (dokumen, stok, rak, hold) masuk ke Scan tanpa menekan Sync. Prasyarat: jalankan
