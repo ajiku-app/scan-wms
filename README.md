@@ -4,7 +4,7 @@ Aplikasi scan gudang berbasis Supabase, dibungkus **Capacitor** menjadi aplikasi
 
 ```
 www/        Aplikasi web (HTML/JS/CSS) — sumber tunggal untuk Android & iOS
-supabase/   Riwayat migrasi SQL (referensi)
+supabase-arsip/   ARSIP SQL lama — JANGAN dijalankan. Backend resmi ada di repo WMS (backend/)
 assets/     Ikon & splash sumber (dibuat otomatis jadi semua ukuran Android/iOS)
 scripts/    Patch otomatis (izin kamera, versi, signing)
 .github/    Workflow build Android (APK+AAB) & iOS
@@ -62,3 +62,30 @@ wajib **Apple Developer Program** (US$99/tahun) dan signing — paling mudah lew
 - Izin kamera & getar ditambahkan otomatis ke AndroidManifest / Info.plist.
 
 > `www/config.js` berisi Supabase **anon key** (publik by design; data dijaga RLS). Jangan pernah memasukkan service_role key.
+
+## Perubahan v1.0.2 (sinkronisasi dengan WMS v2.0.13)
+- Terima barang tidak bisa melebihi Jumlah PL (tidak ada lagi tombol "Lanjut?" yang ditolak server).
+- Setelah server menolak transaksi, tampilan lokal otomatis disinkronkan ulang (rollback) dan alasan penolakan tetap ditampilkan.
+- Stok yang di-hold ditampilkan dan tidak bisa dipindah/putaway; sinkron memuat `stock_holds`.
+- Kode rak: zona 1–3 huruf, serta `GR-STAGING` dan `NON-RACK` dikenali saat scan.
+- Label batch dari tampilan WMS (`PREFIX.YYYYMMDD.NNN`) diterima di input manual.
+- Tanggal/sisa hari memakai WIB (sama dengan server). Stok & rak dibaca per halaman (tidak terpotong 1000 baris).
+- Penyegaran otomatis tiap 90 detik di Beranda (saat online dan antrian kosong).
+- DO yang pesanannya belum terpenuhi penuh tidak otomatis selesai; ditolak server, admin/supervisor menyelesaikan sebagian dari WMS.
+
+> **Wajib:** jalankan `migrate_v2_0_13_sinkron.sql` (repo WMS, folder `backend/`) di Supabase sebelum memakai versi ini.
+
+## Kirim ke GitHub & rilis otomatis
+
+```bash
+bash rilis.sh "pesan commit"          # commit + push ke main -> web (Vercel) ter-update otomatis
+bash rilis.sh 1.0.2 "pesan commit"    # + tag v1.0.2 -> APK/AAB dilampirkan ke GitHub Release
+```
+`ci.yml` memeriksa sintaks JS dan kecocokan tag dengan `package.json`.
+Catatan: versi web/PWA ter-update otomatis; aplikasi Android (APK) membawa isi `www/` di dalamnya,
+jadi HP perlu memasang APK baru dari Releases untuk mendapat perubahan.
+
+## Realtime (v1.0.3)
+Perubahan dari WMS (dokumen, stok, rak, hold) masuk ke Scan tanpa menekan Sync. Prasyarat: jalankan
+`backend/migrate_v2_0_14_realtime_scan.sql` (repo WMS) di Supabase SQL Editor. Chip status menampilkan
+"Online · live" saat tersambung. Bila WebSocket putus, aplikasi menyambung ulang otomatis dan polling 90 detik tetap berjalan.

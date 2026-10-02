@@ -1,7 +1,7 @@
 var PROD={};
 var $=function(i){return document.getElementById(i)},STG="GR-STAGING",S;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-var ymd=function(){return new Date().toISOString().slice(0,10)};
+var ymd=function(){return new Date(Date.now()+7*36e5).toISOString().slice(0,10)}; /* WIB, sama dengan wms_today() di server */
 function blank(){return{stock:[],log:[],pic:"",ins:[],dos:[],n:{in:0,out:0},q:[]}}
 try{S=JSON.parse(localStorage.getItem("mws3"))}catch(e){}if(!S||!S.stock)S=blank();
 function save(){try{localStorage.setItem("mws3",JSON.stringify(S))}catch(e){}}
@@ -13,6 +13,7 @@ function H(){return{"Content-Type":"application/json",apikey:KEY(),Authorization
 function U(p){return CFG.base.replace(/\/+$/,"")+p}
 function Q(m,p,b){if(!live())return;S.q=S.q||[];S.q.push({id:Date.now()+"-"+Math.random().toString(36).slice(2,8),m:m,p:p,b:b,u:SES&&SES.user?SES.user.id:null});save();flush()}
 var busy=false;
+var RT={ws:null,ok:false,ref:1,hb:null,tok:null,retry:0,rt:null,tm:null,pend:false,last:0,want:false};
 function T(j){var m,b=j.b||{},k=j.id,d=function(x){return decodeURIComponent(x)};
 if(m=/^\/inbound\/([^/]+)\/receive$/.exec(j.p))return["wms_inbound_receive_line",{p_doc:d(m[1]),p_sku:b.sku,p_batch:b.batch,p_qty:b.qty,p_rack:b.rack,p_scanned_at:b.scanned_at,p_key:k}];
 if(m=/^\/inbound\/([^/]+)\/complete$/.exec(j.p))return["wms_inbound_complete",{p_doc:d(m[1])}];
@@ -22,29 +23,33 @@ if(j.p==="/stock/move")return["wms_move",{p_sku:b.sku,p_batch:b.batch,p_from:b.f
 return null}
 async function refresh(){if(!SES||!SES.refresh)return false;try{var r=await fetch(U("/auth/v1/token?grant_type=refresh_token"),{method:"POST",headers:{"Content-Type":"application/json",apikey:KEY()},body:JSON.stringify({refresh_token:SES.refresh})});if(!r.ok)return false;var j=await r.json();SES.token=j.access_token;SES.refresh=j.refresh_token;SES.exp=new Date(Date.now()+j.expires_in*1000).toISOString();saveSes();return true}catch(e){return false}}
 async function ensure(){if(SES&&SES.exp&&Date.parse(SES.exp)-Date.now()<60000)await refresh()}
-async function flush(){if(busy||!live())return;S.q=S.q||[];busy=true;var retried=false;
+async function flush(){if(busy||!live())return;S.q=S.q||[];busy=true;var retried=false,rej=false;
 try{while(S.q.length){var j=S.q[0],r;if(!authed()||(j.u&&SES.user&&j.u!==SES.user.id))break;
 await ensure();var t=T(j);if(!t){S.q.shift();continue}
 try{r=await fetch(U("/rest/v1/rpc/"+t[0]),{method:"POST",headers:H(),body:JSON.stringify(t[1])})}catch(e){break}
 if(r.status===401){if(!retried&&await refresh()){retried=true;continue}expire();break}
 retried=false;
 if(r.ok||(r.status>=400&&r.status<500&&r.status!==408&&r.status!==429)){
-if(!r.ok){var m="";try{m=(await r.json()).message||""}catch(e){}toast("WMS menolak: "+(m||r.status),1)}
-S.q.shift();save()}else break}}finally{busy=false;qb()}}
+if(!r.ok){var m="";try{m=(await r.json()).message||""}catch(e){}toast("WMS menolak: "+(m||r.status),1);rej=true}
+S.q.shift();save()}else break}}finally{busy=false;qb();if(rej&&!S.q.length&&authed())sync2(true)}}
 function EMPTY(){return'<div class="mu em">'+(live()?"Tidak ada dokumen yang terbuka. Tekan Sync sekarang di Beranda untuk memuat ulang.":"Belum login.")+"</div>"}
-function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Database aktif · antrian kirim : "+(S.q||[]).length:"Belum terhubung ke WMS."}
+function qb(){var n=$("net");if(n)n.textContent=live()?(navigator.onLine?"Online":"Offline")+(RT.ok?" · live":"")+" · antrian "+(S.q||[]).length:"Belum terhubung";var dt=$("net-dot");if(dt)dt.className=live()&&navigator.onLine?"":"off";var s2=$("net-s");if(s2){s2.textContent=navigator.onLine?"Online":"Offline";$("net-d2").className="nd"+(navigator.onLine?"":" off")};var e=$("api-st");if(e)e.textContent=live()?"Database aktif · antrian kirim : "+(S.q||[]).length:"Belum terhubung ke WMS."}
 async function G(p){await ensure();var r=await fetch(U(p),{headers:H()});if(r.status===401){if(await refresh())return G(p);expire();throw new Error("Sesi berakhir")}if(!r.ok){var m="";try{m=(await r.json()).message}catch(e){}throw new Error(m||"HTTP "+r.status)}return r.json()}
+async function GA(p){var out=[],o=0;for(;;){var b=await G(p+"&limit=1000&offset="+o);if(!b.length)break;out=out.concat(b);o+=b.length;if(o>500000)break}return out}
 async function sync(){if(!live()||!authed())return;var sb=$("api-sync");sb.textContent="Menyinkronkan…";try{await flush();return await sync2()}finally{sb.textContent="Sync sekarang"}}
-async function sync2(){if((S.q||[]).length)return toast(S.q.length+" transaksi belum terkirim",1);
-try{var a=await Promise.all([can("in")?G("/rest/v1/inbound_docs?status=eq.open&order=doc_date,no&select=no,packing_list,supplier,date:doc_date,inbound_lines(sku,batch,expiry,qty_pl,qty_received,rack:rack_code,products(name),profiles(name))"):[],can("out")?G("/rest/v1/outbound_docs?status=eq.open&order=doc_date,no&select=no,date:doc_date,customer_name,customer_phone,customer_address,outbound_picks(seq,sku,batch,expiry,rack:rack_code,qty,picked)"):[],G("/rest/v1/stock?qty=gt.0&order=sku,expiry&limit=5000&select=sku,batch,expiry,rack:rack_code,qty"),G("/rest/v1/racks?active=eq.true&select=code&limit=5000")]);
+async function sync2(q){if((S.q||[]).length)return toast(S.q.length+" transaksi belum terkirim",1);
+try{var a=await Promise.all([can("in")?G("/rest/v1/inbound_docs?status=eq.open&order=doc_date,no&select=no,packing_list,supplier,date:doc_date,inbound_lines(sku,batch,expiry,qty_pl,qty_received,rack:rack_code,products(name),profiles(name))"):[],can("out")?G("/rest/v1/outbound_docs?status=eq.open&order=doc_date,no&select=no,date:doc_date,customer_name,customer_phone,customer_address,outbound_picks(seq,sku,batch,expiry,rack:rack_code,qty,picked)"):[],GA("/rest/v1/stock?qty=gt.0&order=sku,expiry,id&select=sku,batch,expiry,rack:rack_code,qty"),GA("/rest/v1/racks?active=eq.true&order=code&select=code"),G("/rest/v1/stock_holds?status=eq.active&select=sku,batch,rack_code,qty&limit=1000").catch(function(){return[]})]);
 S.ins=a[0].map(function(d){return{no:d.no,pl:d.packing_list,sup:d.supplier,tgl:d.date,done:0,lines:(d.inbound_lines||[]).map(function(l){if(l.products&&l.products.name)PROD[l.sku]=l.products.name;return{sku:l.sku,batch:l.batch,ed:l.expiry,pl:l.qty_pl,rcv:l.qty_received||0,rak:l.rack||"",pic:l.profiles?l.profiles.name:""}})}});
 S.dos=a[1].map(function(d){return{no:d.no,tgl:d.date,cust:d.customer_name,tel:d.customer_phone,addr:d.customer_address,done:0,picks:(d.outbound_picks||[]).sort(function(x,y){return x.seq-y.seq}).map(function(p){return{sku:p.sku,batch:p.batch,ed:p.expiry,loc:p.rack,qty:p.qty,got:p.picked||0}})}});
-S.racks=a[3].map(function(x){return x.code});S.stock=a[2].map(function(x){return{sku:x.sku,batch:x.batch,ed:x.expiry,loc:x.rack,qty:x.qty}});
-save();render();toast("Sinkron dengan WMS")}catch(e){toast("Gagal sinkron: "+e.message,1)}}
+S.racks=a[3].map(function(x){return x.code});S.holds=(a[4]||[]).map(function(h){return{sku:h.sku,batch:h.batch,loc:h.rack_code,qty:h.qty}});S.stock=a[2].map(function(x){return{sku:x.sku,batch:x.batch,ed:x.expiry,loc:x.rack,qty:x.qty}});
+save();render();if(!q)toast("Sinkron dengan WMS")}catch(e){toast("Gagal sinkron: "+e.message,1)}}
 var AC;function beep(er){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();var o=AC.createOscillator(),g=AC.createGain();o.frequency.value=er?200:1100;o.connect(g);g.connect(AC.destination);g.gain.value=.15;o.start();o.stop(AC.currentTime+(er?.35:.12))}catch(x){}}
-function toast(m,t){var e=$("toast");e.textContent=m;e.style.background=t?"#B42318":"#14532D";e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(function(){e.style.display="none"},t&&String(m).length>40?7000:2600);try{navigator.vibrate&&navigator.vibrate(t?[80,40,80]:40)}catch(x){}beep(t);}
-function parse(t){var a=t.trim().split("|");return a.length>1&&a[0]&&a[1]?{sku:a[0].trim().toUpperCase(),batch:a[1].trim().toUpperCase()}:null}
-function isRack(t){return/^[A-Z]{1,2}-\d{1,3}-\d{1,3}$/i.test(t.trim())}
+function toast(m,t){var e=$("toast");e.textContent=m;e.style.background=t?"#B42318":"#14532D";e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(function(){e.style.display="none"},t&&String(m).length>40?Math.min(14000,Math.max(7000,String(m).length*70)):2600);try{navigator.vibrate&&navigator.vibrate(t?[80,40,80]:40)}catch(x){}beep(t);}
+function knownB(b){return S.stock.some(function(x){return x.batch===b})||S.ins.some(function(d){return d.lines.some(function(l){return l.batch===b})})||S.dos.some(function(d){return d.picks.some(function(p){return p.batch===b})})}
+function parse(t){var a=t.trim().split("|");if(!(a.length>1&&a[0]&&a[1]))return null;var b=a[1].trim().toUpperCase();if(!knownB(b)){var m=/^.+\.(\d{8}\.\d{3})$/.exec(b);if(m)b=m[1]}return{sku:a[0].trim().toUpperCase(),batch:b}}
+function isRack(t){t=t.trim().toUpperCase();return/^[A-Z]{1,3}-\d{1,3}-\d{1,3}$/.test(t)||t===STG||t==="NON-RACK"}
+function held(s,b,l){return(S.holds||[]).filter(function(h){return h.sku===s&&h.batch===b&&h.loc===l}).reduce(function(a,h){return a+h.qty},0)}
+function freeQ(s,b,l){var r=find(s,b,l);return r?Math.max(0,r.qty-held(s,b,l)):0}
 function find(s,b,l){return S.stock.filter(function(x){return x.sku===s&&x.batch===b&&x.loc===l})[0]}
 function add(s,b,ed,l,q){var r=find(s,b,l);if(r){r.qty+=q;if(ed)r.ed=ed}else S.stock.push({sku:s,batch:b,ed:ed,loc:l,qty:q})}
 function sub(s,b,l,q){var r=find(s,b,l);r.qty-=q;S.stock=S.stock.filter(function(x){return x.qty>0})}
@@ -80,13 +85,13 @@ var ST3={full:["Penuh","#D62839","#fff","#D62839"],part:["Tersisa","#FBB92E","#1
 function occ(c){return S.stock.some(function(x){return x.loc===c})}
 function sk(a){var o=a.map(occ);return o.every(Boolean)?"full":o.some(Boolean)?"part":"empty"}
 function p2(n){return n<10?"0"+n:""+n}
-function rkT(){var z={};(S.racks||[]).forEach(function(c){var m=/^([A-Z]{1,2})-(\d{1,3})-(\d{1,3})$/i.exec(c);if(!m)return;var a=m[1].toUpperCase(),b=+m[2];z[a]=z[a]||{};z[a][b]=z[a][b]||{};z[a][b][+m[3]]=c});return z}
+function rkT(){var z={};(S.racks||[]).forEach(function(c){var m=/^([A-Z]{1,3})-(\d{1,3})-(\d{1,3})$/i.exec(c);if(!m)return;var a=m[1].toUpperCase(),b=+m[2];z[a]=z[a]||{};z[a][b]=z[a][b]||{};z[a][b][+m[3]]=c});return z}
 function bl(Z,b){return Object.keys(Z[b]).map(function(l){return Z[b][l]})}
 function zc(a){var Z=rkT()[a]||{},r=[];Object.keys(Z).forEach(function(b){r=r.concat(bl(Z,b))});return r}
 function rkb(at,k,m,sub,sel){var q=ST3[k];return'<button class="rb'+(sel?" sel":"")+'" '+at+' style="background:'+q[1]+";color:"+q[2]+";border-color:"+q[3]+'"><b>'+m+"</b>"+(sub?"<small>"+q[0]+"</small>":"")+"</button>"}
 function lgd(){return'<div class="lgd"><span><i style="background:#D62839"></i>Penuh</span><span><i style="background:#FBB92E"></i>Masih tersisa</span><span><i style="background:#E3E8E4;border:1px solid #B7C6BC"></i>Kosong</span></div>'}
 function xb(){return'<button class="ib" data-x="1" aria-label="Tutup"><svg class="ic"><use href="#i-x"/></svg></button>'}
-function rkOpen(){var m=/^([A-Z]{1,2})-(\d+)-(\d+)$/i.exec($("mv-dst").value),T=rkT();rk=m&&T[m[1].toUpperCase()]?{z:m[1].toUpperCase(),b:+m[2],l:+m[3]}:{z:"",b:0,l:0};if(rk.z&&!(T[rk.z][rk.b]&&T[rk.z][rk.b][rk.l]))rk={z:rk.z,b:0,l:0};rkDraw()}
+function rkOpen(){var m=/^([A-Z]{1,3})-(\d+)-(\d+)$/i.exec($("mv-dst").value),T=rkT();rk=m&&T[m[1].toUpperCase()]?{z:m[1].toUpperCase(),b:+m[2],l:+m[3]}:{z:"",b:0,l:0};if(rk.z&&!(T[rk.z][rk.b]&&T[rk.z][rk.b][rk.l]))rk={z:rk.z,b:0,l:0};rkDraw()}
 function rkDraw(){var T=rkT(),zs=Object.keys(T).sort(),h;
 if(!zs.length)return sheet('<div class="sh-t">Pilih rak tujuan</div><div class="mu">Daftar rak belum termuat. Tekan Sync sekarang di Beranda, atau scan kode rak tujuan.</div><button class="b g" data-x="1">Tutup</button>');
 if(!rk.z){var n={full:0,part:0,empty:0};h=zs.map(function(a){var k=sk(zc(a));n[k]++;return rkb('data-z="'+a+'" aria-label="Rak '+a+", "+ST3[k][0]+'"',k,a,1)}).join("");
@@ -115,7 +120,7 @@ $("in-q").value=Math.max(1,l.pl-l.rcv);$("in-rak").value=l.rak||"";render();$("i
 function doIn(){var d=din(),q=+$("in-q").value,rk=$("in-rak").value.trim().toUpperCase();
 if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");if(rk&&!isRack(rk))return toast("Kode rak tidak valid","e");
 var l=d.lines.filter(function(x){return x.sku===cin.sku&&x.batch===cin.batch})[0];if(!l)return toast("Baris tidak ditemukan di Packing List","e");
-if(l.rcv+q>l.pl&&!confirm("Melebihi Jumlah PL ("+l.pl+"). Lanjut?"))return;
+if(l.rcv+q>l.pl)return toast("Melebihi Jumlah PL (sisa "+Math.max(0,l.pl-l.rcv)+" ctn)","e");
 var loc=rk||l.rak||STG;l.rcv+=q;l.rak=loc;l.pic=S.pic;add(cin.sku,cin.batch,l.ed,loc,q);lg("GR",d.no,cin.sku,cin.batch,loc,q);
 Q("POST","/inbound/"+encodeURIComponent(d.no)+"/receive",{sku:cin.sku,batch:cin.batch,qty:q,rack:rk||null,scanned_at:new Date().toISOString()});save();
 toast("Diterima "+q+" ctn → "+loc);cin=null;$("in-f").hidden=true;render();$("in-scan").focus()};
@@ -149,21 +154,21 @@ pend=null;$("out-f").hidden=true;save();render();$("out-scan").focus()};
 var mc=null;
 bind("mv-scan",function(v){if(isRack(v)){$("mv-dst").value=v.toUpperCase();return toast("Ke rak "+v.toUpperCase())}
 var p=parse(v);if(!p)return toast("Format harus SKU|Batch","e");var rows=S.stock.filter(function(x){return x.sku===p.sku&&x.batch===p.batch});
-if(!rows.length)return toast("Stok tidak ditemukan","e");mc=p;$("mv-f").hidden=false;$("mv-i").textContent=p.sku+" · "+p.batch;
-$("mv-src").innerHTML=rows.map(function(r){return'<option value="'+esc(r.loc)+'">'+esc(r.loc)+" — "+r.qty+" ctn</option>"}).join("");$("mv-q").value=rows[0].qty;$("mv-src").onchange=function(){$("mv-q").value=find(mc.sku,mc.batch,this.value).qty}});
+if(!rows.length)return toast("Stok tidak ditemukan","e");rows=rows.filter(function(r){return freeQ(r.sku,r.batch,r.loc)>0});if(!rows.length)return toast("Seluruh stok item ini sedang di-hold","e");mc=p;$("mv-f").hidden=false;$("mv-i").textContent=p.sku+" · "+p.batch;
+$("mv-src").innerHTML=rows.map(function(r){return'<option value="'+esc(r.loc)+'">'+esc(r.loc)+" — "+freeQ(r.sku,r.batch,r.loc)+" ctn"+(held(r.sku,r.batch,r.loc)?" (+"+held(r.sku,r.batch,r.loc)+" hold)":"")+"</option>"}).join("");$("mv-q").value=freeQ(rows[0].sku,rows[0].batch,rows[0].loc);$("mv-src").onchange=function(){$("mv-q").value=freeQ(mc.sku,mc.batch,this.value)}});
 function doMv(){if(!mc)return;var s=$("mv-src").value,dst=$("mv-dst").value.trim().toUpperCase(),q=+$("mv-q").value,r=find(mc.sku,mc.batch,s);
-if(!isRack(dst))return toast("Scan / isi rak tujuan","e");if(dst===s)return toast("Rak sama","e");if(!(q>0)||q>r.qty)return toast("Jumlah maks "+r.qty,"e");
+if(!isRack(dst))return toast("Scan / isi rak tujuan","e");if(dst===s)return toast("Rak sama","e");if(dst===STG)return toast("Tujuan putaway tidak boleh GR-STAGING","e");var fq=freeQ(mc.sku,mc.batch,s);if(!(q>0)||q>fq)return toast("Jumlah maks "+fq+" ctn (stok yang di-hold tidak bisa dipindah)","e");
 add(mc.sku,mc.batch,r.ed,dst,q);sub(mc.sku,mc.batch,s,q);lg("PINDAH","-",mc.sku,mc.batch,s+" → "+dst,q);
 Q("POST","/stock/move",{sku:mc.sku,batch:mc.batch,from_rack:s,to_rack:dst,qty:q,pic:S.pic,scanned_at:new Date().toISOString()});save();toast(q+" ctn → "+dst);
 mc=null;$("mv-f").hidden=true;$("mv-i").textContent="";$("mv-dst").value="";render();$("mv-scan").focus()};
 
-$("in-ok").onclick=function(){var d=din(),q=+$("in-q").value;if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");ask("Konfirmasi penerimaan barang",[["Dokumen",d.no],["Barang",cin.sku+" · "+cin.batch],["Jumlah",q+" ctn"],["Rak tujuan",$("in-rak").value.trim().toUpperCase()||"GR-STAGING (staging)"]],doIn)};
+$("in-ok").onclick=function(){var d=din(),q=+$("in-q").value;if(!d||!cin)return;if(!(q>0))return toast("Isi jumlah","e");var l0=d.lines.filter(function(x){return x.sku===cin.sku&&x.batch===cin.batch})[0];if(l0&&l0.rcv+q>l0.pl)return toast("Melebihi Jumlah PL (sisa "+Math.max(0,l0.pl-l0.rcv)+" ctn)","e");ask("Konfirmasi penerimaan barang",[["Dokumen",d.no],["Barang",cin.sku+" · "+cin.batch],["Jumlah",q+" ctn"],["Rak tujuan",$("in-rak").value.trim().toUpperCase()||"GR-STAGING (staging)"]],doIn)};
 $("out-ok").onclick=function(){var d=dout();if(!d||!pend)return;ask("Konfirmasi pengambilan barang",[["Dokumen",d.no],["Barang",pend.sku+" · "+pend.batch],["Jumlah",$("out-q").value+" ctn"],["Diambil dari rak",pend.loc]],doOut)};
 $("mv-ok").onclick=function(){if(!mc)return;var dst=$("mv-dst").value.trim().toUpperCase();if(!isRack(dst))return toast("Pilih atau scan rak tujuan","e");ask("Konfirmasi putaway",[["Barang",mc.sku+" · "+mc.batch],["Jumlah",$("mv-q").value+" ctn"],["Dari",$("mv-src").value],["Ke rak",dst]],doMv)};
 /* STOK + render */
 function render(){rIn();rOut();rHome();pg();var q=$("st-q").value.toLowerCase();
 var all=S.stock.filter(function(x){return(x.sku+x.batch+x.loc).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return a.sku+a.ed<b.sku+b.ed?-1:1}),st=all.slice(0,300);
-$("st-t").innerHTML=st.length?st.map(function(x){var d=days(x.ed);return'<div class="cd"><div><div class="rk">'+esc(x.loc)+"</div><b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">ED '+esc(x.ed)+' · <span class="'+(d<90?"w2":"")+'">'+d+' hari</span></div></div><div class="qt">'+x.qty+"<small> ctn</small></div></div>"}).join("")+(all.length>300?'<div class="mu em">Menampilkan 300 dari '+all.length+" — persempit pencarian.</div>":""):'<div class="mu em">Stok tidak ditemukan.</div>';
+$("st-t").innerHTML=st.length?st.map(function(x){var d=days(x.ed);return'<div class="cd"><div><div class="rk">'+esc(x.loc)+"</div><b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">ED '+esc(x.ed)+' · <span class="'+(d<90?"w2":"")+'">'+d+' hari</span></div></div><div class="qt">'+x.qty+"<small> ctn"+(held(x.sku,x.batch,x.loc)?" · hold "+held(x.sku,x.batch,x.loc):"")+"</small></div></div>"}).join("")+(all.length>300?'<div class="mu em">Menampilkan 300 dari '+all.length+" — persempit pencarian.</div>":""):'<div class="mu em">Stok tidak ditemukan.</div>';
 $("lg-t").innerHTML=S.log.length?S.log.slice(0,50).map(function(x){return'<div class="cd"><div><span class="bd'+(x.type==="GI"?" p":"")+'">'+esc(x.type)+"</span> <b>"+esc(x.sku)+"</b> · "+esc(x.batch)+'<div class="mu">'+esc(x.doc)+" · "+esc(x.loc)+" · "+esc(x.t)+'</div></div><div class="qt">'+x.qty+"</div></div>"}).join(""):'<div class="mu em">Belum ada riwayat.</div>';cs()}
 $("st-q").oninput=render;
 
@@ -239,10 +244,10 @@ function authed(){return!!(SES&&SES.token&&Date.now()-(SES.last||0)<IDLE)}
 function can(f){var r=SES&&SES.user&&String(SES.user.role||"").toLowerCase();return(PERM[r]||[]).indexOf(f)>-1}
 function saveSes(){try{localStorage.setItem("mwsses",JSON.stringify(SES))}catch(e){}}
 function touch(){var n=Date.now();if(SES&&n-lt>15000){lt=n;SES.last=n;saveSes()}}
-function expire(){SES=null;try{localStorage.removeItem("mwsses")}catch(e){}showLogin("Sesi berakhir. Silakan login kembali.")}
+function expire(){rtStop();SES=null;try{localStorage.removeItem("mwsses")}catch(e){}showLogin("Sesi berakhir. Silakan login kembali.")}
 function showLogin(m){closeCam();$("login").style.display="flex";$("lg-e").textContent=m||"";$("menu").hidden=true;$("lg-u").focus()}
 function applyRole(){$("login").style.display="none";$("un").textContent=SES.user.name;$("rl").textContent=RL[SES.user.role]||SES.user.role;$("em").textContent=SES.user.email||SES.user.name;S.pic=SES.user.name;save();
-var fl=["in","out","mv"],f=fl.filter(function(k){return can(k)})[0];fl.forEach(function(k){$("h-"+k).hidden=!can(k);$("h-"+k).classList.toggle("pri",k===f)});$("fab").hidden=!f;fl.forEach(function(k){$("seg").querySelector('[data-tab="'+k+'"]').hidden=!can(k)});go("home",1);qb();sync()}
+var fl=["in","out","mv"],f=fl.filter(function(k){return can(k)})[0];fl.forEach(function(k){$("h-"+k).hidden=!can(k);$("h-"+k).classList.toggle("pri",k===f)});$("fab").hidden=!f;fl.forEach(function(k){$("seg").querySelector('[data-tab="'+k+'"]').hidden=!can(k)});go("home",1);qb();sync();rtStart()}
 $("lg-p").addEventListener("keydown",function(e){if(e.key==="Enter")$("lg-go").click()});
 $("lg-go").onclick=async function(){var u=$("lg-u").value.trim().toLowerCase(),p=$("lg-p").value;
 var em=!u?"Email wajib diisi":"",pm=!p?"Kata sandi wajib diisi":p.length<6?"Minimal 6 karakter":"";$("lg-um").textContent=em;$("lg-pm").textContent=pm;$("lg-u").classList.toggle("er",!!em);$("lg-pw").classList.toggle("er",!!pm);if(em||pm)return;
@@ -263,13 +268,44 @@ if(SES&&live()){try{fetch(U("/auth/v1/logout"),{method:"POST",headers:H()}).catc
 SES=null;S.pic="";save();try{localStorage.removeItem("mwsses")}catch(e){}location.reload()};
 ["click","keydown","touchstart"].forEach(function(ev){document.addEventListener(ev,touch,{passive:true})});
 setInterval(function(){if(SES&&!authed())expire()},30000);
+setInterval(function(){if(authed()&&navigator.onLine&&!document.hidden&&cur==="home"&&!busy&&!(S.q||[]).length&&$("sh").hidden)sync2(true)},90000);
+/* ===== Realtime: perubahan di WMS langsung masuk (Supabase Realtime via WebSocket, tanpa library) =====
+   Hak baca mengikuti RLS login. Polling 90 dtk tetap jadi cadangan bila koneksi live putus. */
+var RTT=["inbound_docs","inbound_lines","outbound_docs","outbound_picks","stock","stock_holds","racks"],RTP="realtime:wms-scan";
+function rtBeat(){var w=RT.ws;if(!w||w.readyState!==1)return;
+ensure().then(function(){if(RT.ws!==w||w.readyState!==1)return;
+if(SES&&SES.token&&SES.token!==RT.tok){RT.tok=SES.token;w.send(JSON.stringify({topic:RTP,event:"access_token",payload:{access_token:RT.tok},ref:String(++RT.ref),join_ref:"1"}))}
+w.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:String(++RT.ref)}))}).catch(function(){})}
+function rtLater(){clearTimeout(RT.rt);RT.retry=Math.min(RT.retry+1,6);RT.rt=setTimeout(rtStart,Math.min(60000,2000*Math.pow(2,RT.retry-1)))}
+function rtPend(){RT.pend=true;clearTimeout(RT.tm);RT.tm=setTimeout(rtApply,1500)}
+/* Terapkan perubahan bila aman: tidak ada antrian kirim, tidak sedang mengetik/membuka lembar, minimal 8 dtk antar-sync. */
+function rtApply(){if(!RT.pend)return;if(document.hidden)return;
+if(!authed()||!navigator.onLine||busy||(S.q||[]).length||!$("sh").hidden||(cur==="scan"&&document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))){clearTimeout(RT.tm);RT.tm=setTimeout(rtApply,4000);return}
+var w=RT.last+8000-Date.now();if(w>0){clearTimeout(RT.tm);RT.tm=setTimeout(rtApply,w);return}
+RT.pend=false;RT.last=Date.now();sync2(true)}
+async function rtStart(){RT.want=true;if(!live()||!authed()||!navigator.onLine||typeof WebSocket==="undefined")return;
+if(RT.ws&&RT.ws.readyState<2)return;clearTimeout(RT.rt);
+try{await ensure()}catch(e){}if(!authed()||(RT.ws&&RT.ws.readyState<2))return;
+var ws;try{ws=new WebSocket(CFG.base.replace(/^http/,"ws")+"/realtime/v1/websocket?apikey="+encodeURIComponent(KEY())+"&vsn=1.0.0")}catch(e){return rtLater()}
+RT.ws=ws;RT.ok=false;
+ws.onopen=function(){RT.tok=SES.token;RT.ref=1;
+ws.send(JSON.stringify({topic:RTP,event:"phx_join",payload:{config:{broadcast:{ack:false,self:false},presence:{key:""},postgres_changes:RTT.map(function(t){return{event:"*",schema:"public",table:t}}),private:false},access_token:RT.tok},ref:"1",join_ref:"1"}));
+clearInterval(RT.hb);RT.hb=setInterval(rtBeat,25000)};
+ws.onmessage=function(e){var m;try{m=JSON.parse(e.data)}catch(x){return}
+if(m.event==="phx_reply"&&m.topic===RTP&&m.ref==="1"){RT.ok=!!(m.payload&&m.payload.status==="ok");qb();
+if(RT.ok){RT.retry=0;rtPend()}else try{ws.close()}catch(x){}}
+else if(m.event==="postgres_changes")rtPend();
+else if(m.topic===RTP&&(m.event==="phx_close"||m.event==="phx_error"))try{ws.close()}catch(x){}};
+ws.onclose=function(){if(RT.ws!==ws)return;RT.ws=null;RT.ok=false;clearInterval(RT.hb);qb();if(RT.want&&authed())rtLater()};
+ws.onerror=function(){try{ws.close()}catch(x){}}}
+function rtStop(){RT.want=false;RT.pend=false;clearTimeout(RT.rt);clearTimeout(RT.tm);clearInterval(RT.hb);var w=RT.ws;RT.ws=null;RT.ok=false;if(w)try{w.close()}catch(e){}try{qb()}catch(e){}}
 $("api-sync").onclick=sync;window.addEventListener("online",function(){flush();qb()});window.addEventListener("offline",qb);
 render();qb();
 if(authed())applyRole();else if(SES)showLogin("Sesi berakhir. Silakan login kembali.");else $("welcome").style.display="flex";
 $("wl-go").onclick=function(){$("welcome").style.display="none";showLogin("")};
 $("lg-bk").onclick=function(){$("login").style.display="none";$("welcome").style.display="flex"};
 function wl(){try{navigator.wakeLock&&navigator.wakeLock.request("screen")}catch(e){}}wl();
-function onResume(){wl();if(camOn){camOn=false;cs()}if(authed()){flush();sync()}}
+function onResume(){wl();if(camOn){camOn=false;cs()}if(authed()){flush();sync();rtStart()}}
 document.addEventListener("visibilitychange",function(){if(!document.hidden)onResume()});
 window.addEventListener("focus",onResume);
 window.addEventListener("pageshow",function(e){if(e.persisted)onResume()});

@@ -1,6 +1,6 @@
 {
   "name": "scan-wms",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "private": true,
   "description": "WMS FG Warehouse - aplikasi scan gudang (Supabase) dibungkus Capacitor untuk Android (APK/AAB) & iOS",
   "scripts": {
