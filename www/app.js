@@ -60,6 +60,7 @@ function days(ed){return Math.round((new Date(ed)-new Date(ymd()))/864e5)}
 function bind(id,fn){$(id).addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();var v=this.value;this.value="";if(!authed())return showLogin("Sesi berakhir. Silakan login kembali.");if(v.trim())fn(v.trim())}})}
 function tbl(id,h,rows,cls){$(id).innerHTML="<tr>"+h.map(function(x){return"<th"+(x[1]?' class="n"':"")+">"+x[0]+"</th>"}).join("")+"</tr>"+rows.map(function(r,i){return"<tr"+(cls&&cls(i)?' class="'+cls(i)+'"':"")+">"+r.map(function(c,j){return"<td"+(h[j][1]?' class="n"':"")+">"+esc(c)+"</td>"}).join("")+"</tr>"}).join("")}
 function kv(a){return'<div class="kv">'+a.map(function(x){return"<span>"+x[0]+"</span><b>"+esc(x[1])+"</b>"}).join("")+"</div>"}
+function badgeO(d){var a=!d.done&&d.picks.length&&d.picks.every(function(x){return x.got>=x.qty});return a?'<span class="bd" style="float:right">Menunggu muat</span>':badge(d.done)}
 function badge(d){return'<span class="bd'+(d?"":" p")+'" style="float:right">'+(d?"Selesai":"Proses")+"</span>"}
 
 var SCR=["home","scan","st"],cur="home",stab="in",man=false,rs=false,camOn=false,rk={z:"",b:0,l:0},askFn=null,HINT={in:"Arahkan ke barcode label (SKU|Batch)",out:"Scan rak, lalu label (SKU|Batch)",mv:"Scan label pallet, lalu kode rak tujuan"};
@@ -135,7 +136,7 @@ $("in-done").onclick=function(){var d=din();if(!d)return;if(d.lines.some(functio
 var cr=null,pend=null;
 function dout(){return S.dos.filter(function(d){return d.no===$("out-sel").value})[0]}
 function rOut(){var v=$("out-sel").value;$("out-sel").innerHTML=S.dos.map(function(d){return"<option>"+esc(d.no)+"</option>"}).join("");if(v)$("out-sel").value=v;var d=dout();if(!d){$("out-h").innerHTML=EMPTY();$("out-t").innerHTML="";return}
-$("out-h").innerHTML=badge(d.done)+kv([["Kode",d.no],["Tanggal",d.tgl],["Pelanggan",d.cust],["No. Telepon",d.tel],["Alamat",d.addr]]);
+$("out-h").innerHTML=badgeO(d)+kv([["Kode",d.no],["Tanggal",d.tgl],["Pelanggan",d.cust],["No. Telepon",d.tel],["Alamat",d.addr]]);
 $("out-rk").textContent=cr?"Rak aktif: "+cr:"";
 $("out-t").innerHTML=d.picks.map(function(p,i){var c=p.got>=p.qty?" dn":pend===p?" cur":"",sd=days(p.ed);return'<div class="cd'+c+'"><div><div class="rk">'+esc(p.loc)+'</div><b>'+esc(p.sku)+'</b> · '+esc(p.batch)+'<div class="mu">#'+(i+1)+' · ED '+esc(p.ed)+' · <span class="'+(sd<90?"w2":"")+'">'+sd+' hari</span></div></div><div class="qt">'+p.got+'<small>/'+p.qty+'</small></div></div>'}).join("")}
 $("out-sel").onchange=function(){pend=null;cr=null;$("out-f").hidden=true;render()};
@@ -152,7 +153,7 @@ function doOut(){var d=dout();if(!d||!pend)return;var q=+$("out-q").value;if(!(q
 var r=find(pend.sku,pend.batch,pend.loc);if(!r||r.qty<q)return toast("Stok rak tidak cukup","e");
 sub(pend.sku,pend.batch,pend.loc,q);pend.got+=q;lg("GI",d.no,pend.sku,pend.batch,pend.loc,q);
 Q("POST","/outbound/"+encodeURIComponent(d.no)+"/pick",{sku:pend.sku,batch:pend.batch,rack:pend.loc,qty:q,pic:S.pic,scanned_at:new Date().toISOString()});
-if(d.picks.every(function(x){return x.got>=x.qty})){d.done=1;Q("POST","/outbound/"+encodeURIComponent(d.no)+"/complete",{pic:S.pic});toast("DO selesai ✔")}else toast("Diambil "+q+" ctn");
+if(d.picks.every(function(x){return x.got>=x.qty}))toast("Picking lengkap ✔ Lanjut proses muat. DO ditutup checker di WMS (isi data muat).");else toast("Diambil "+q+" ctn");
 pend=null;$("out-f").hidden=true;save();render();$("out-scan").focus()};
 
 /* PINDAH RAK */

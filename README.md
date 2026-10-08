@@ -97,3 +97,10 @@ jadi HP perlu memasang APK baru dari Releases untuk mendapat perubahan.
 Perubahan dari WMS (dokumen, stok, rak, hold) masuk ke Scan tanpa menekan Sync. Prasyarat: jalankan
 `backend/migrate_v2_0_14_realtime_scan.sql` (repo WMS) di Supabase SQL Editor. Chip status menampilkan
 "Online · live" saat tersambung. Bila WebSocket putus, aplikasi menyambung ulang otomatis dan polling 90 detik tetap berjalan.
+
+## Perubahan v1.0.5 (sinkronisasi dengan WMS v2.0.20 — data muat)
+- DO **tidak lagi ditutup otomatis** saat semua baris selesai di-pick. Setelah picking lengkap, DO berstatus "Menunggu muat".
+- Penutupan DO dilakukan **checker lewat WMS** (menu Outbound → Selesai Kirim) dengan mengisi: waktu mulai & selesai muat, no. kendaraan, nama ekspedisi, petugas muat.
+- Barang yang sudah di-pick tidak bisa di-scan lagi (server menolak melebihi sisa pick), sehingga tidak tercampur dengan proses inbound.
+
+> **Wajib:** jalankan `migrate_v2_0_20_outbound_muat.sql` (repo WMS, folder `backend/`) di Supabase, lalu pasang APK baru di semua HP. Scan lama akan mencoba menutup DO tanpa data muat dan ditolak server.
