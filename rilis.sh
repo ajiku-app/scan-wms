@@ -23,6 +23,8 @@ if [ -n "$VER" ]; then
   git rev-parse -q --verify "refs/tags/v$VER" >/dev/null && { echo "Tag v$VER sudah ada. Pakai nomor versi yang baru."; exit 1; }
   # samakan versi di package.json dengan nomor rilis
   node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$VER';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+  # samakan versi yang tampil di aplikasi (var APP_VER di www/app.js)
+  node -e "const fs=require('fs');const p='www/app.js';const s=fs.readFileSync(p,'utf8');fs.writeFileSync(p,s.replace(/var APP_VER=\"[^\"]*\"/,'var APP_VER=\"$VER\"'))"
 fi
 
 git add -A

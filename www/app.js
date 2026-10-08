@@ -1,3 +1,5 @@
+var APP_VER="1.0.6",APP_WMS="2.0.20"; /* versi tampil di layar; rilis.sh mengisi APP_VER otomatis */
+(function(){function f(){var t="Scan v"+APP_VER+" · cocok dengan WMS v"+APP_WMS;["ver-l","ver-h","ver-m"].forEach(function(i){var e=document.getElementById(i);if(e)e.textContent=t})}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",f);else f()})();
 var PROD={};
 var $=function(i){return document.getElementById(i)},STG="GR-STAGING",S;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}

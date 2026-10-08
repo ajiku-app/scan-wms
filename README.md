@@ -104,3 +104,8 @@ Perubahan dari WMS (dokumen, stok, rak, hold) masuk ke Scan tanpa menekan Sync. 
 - Barang yang sudah di-pick tidak bisa di-scan lagi (server menolak melebihi sisa pick), sehingga tidak tercampur dengan proses inbound.
 
 > **Wajib:** jalankan `migrate_v2_0_20_outbound_muat.sql` (repo WMS, folder `backend/`) di Supabase, lalu pasang APK baru di semua HP. Scan lama akan mencoba menutup DO tanpa data muat dan ditolak server.
+
+## Perubahan v1.0.6 — nomor versi tampil di aplikasi
+- Versi tampil di **layar login**, **bawah Beranda**, dan **menu akun** (ikon orang): `Scan v1.0.6 · cocok dengan WMS v2.0.20`.
+- `rilis.sh` mengisi `APP_VER` di `www/app.js` otomatis saat rilis dengan nomor versi, jadi tidak perlu diubah manual.
+- Hosting PWA yang dipakai: **Vercel** (`scanwms.vercel.app`) — ter-update otomatis setiap push ke `main`.
